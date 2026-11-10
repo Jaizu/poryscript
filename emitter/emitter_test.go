@@ -3583,3 +3583,55 @@ Route29_Text_Dude_CatchingTutRejected:
 	})
 	benchResult = result
 }
+
+func TestEmitShiftOperators(t *testing.T) {
+	input := `
+const FLAG_BIT = 1 << 4
+script ShiftScript {
+	setvar(VAR_0x8000, VAR_0x8001 >> 2)
+	setvar(VAR_0x8002, FLAG_BIT)
+	switch (var(VAR_0x8000)) {
+		case 1 << 2:
+			msgbox("Shifted.")
+	}
+	if (var(VAR_0x8000) == 1 << 3) {
+		release
+	}
+}
+`
+	expected := `ShiftScript::
+	setvar VAR_0x8000, VAR_0x8001 >> 2
+	setvar VAR_0x8002, 1 << 4
+	switch VAR_0x8000
+	case 1 << 2, ShiftScript_3
+ShiftScript_1:
+	compare VAR_0x8000, 1 << 3
+	goto_if_eq ShiftScript_4
+	return
+
+ShiftScript_3:
+	msgbox ShiftScript_Text_0
+	goto ShiftScript_1
+
+ShiftScript_4:
+	release
+	return
+
+
+ShiftScript_Text_0:
+	.string "Shifted.$"
+`
+	l := lexer.New(input)
+	p := parser.New(l, parser.CommandConfig{}, "", "", 0, nil)
+	program, err := p.ParseProgram()
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	result, err := New(program, true, false, "").Emit()
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if result != expected {
+		t.Errorf("Mismatching shift operators emit -- Expected=%q, Got=%q", expected, result)
+	}
+}
