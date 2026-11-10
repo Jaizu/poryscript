@@ -10,7 +10,7 @@ ifeq ($(OS),Windows_NT)
 endif
 
 # Add any new packages to this variable to pick up underlying source files
-PACKAGES := ast emitter lexer parser
+PACKAGES := ast emitter lexer parser refactor token
 GOFILES  := main.go $(foreach package,$(PACKAGES),$(wildcard $(package)/*.go))
 SOURCES  := $(filter-out %_test.go,$(GOFILES))
 
