@@ -40,10 +40,25 @@ func (e *Emitter) Emit() (string, error) {
 	}
 
 	i := 0
+	// Movement macros come first, because the assembler needs a macro to be
+	// defined before any movement uses it.
+	for _, stmt := range e.program.TopLevelStatements {
+		if movementStmt, ok := stmt.(*ast.MovementStatement); ok && movementStmt.IsMacro {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(e.emitMovementMacro(movementStmt))
+			i++
+		}
+	}
+
 	for _, stmt := range e.program.TopLevelStatements {
 		_, ok := stmt.(*ast.TextStatement)
 		if ok {
 			// Text is rendered separately after the other statements are rendered.
+			continue
+		}
+		if movementStmt, ok := stmt.(*ast.MovementStatement); ok && movementStmt.IsMacro {
 			continue
 		}
 
@@ -91,6 +106,13 @@ func (e *Emitter) Emit() (string, error) {
 		martStmt, ok := stmt.(*ast.MartStatement)
 		if ok {
 			sb.WriteString(e.emitMartStatement(martStmt))
+			i++
+			continue
+		}
+
+		commandStmt, ok := stmt.(*ast.CommandStatement)
+		if ok {
+			sb.WriteString(e.emitTopLevelMacro(commandStmt))
 			i++
 			continue
 		}
@@ -755,6 +777,29 @@ func (e *Emitter) emitMovementStatement(movementStmt *ast.MovementStatement) str
 		}
 	}
 	sb.WriteString(fmt.Sprintf("\t%s\n", terminator))
+	return sb.String()
+}
+
+func (e *Emitter) emitMovementMacro(movementStmt *ast.MovementStatement) string {
+	var sb strings.Builder
+	tryEmitLineMarker(&sb, movementStmt.Token, e.enableLineMarkers, e.inputFilepath)
+	sb.WriteString(fmt.Sprintf(".macro %s\n", movementStmt.Name.Value))
+	for _, cmd := range movementStmt.MovementCommands {
+		tryEmitLineMarker(&sb, cmd, e.enableLineMarkers, e.inputFilepath)
+		sb.WriteString(fmt.Sprintf("\t%s\n", cmd.Literal))
+	}
+	sb.WriteString(".endm\n")
+	return sb.String()
+}
+
+func (e *Emitter) emitTopLevelMacro(commandStmt *ast.CommandStatement) string {
+	var sb strings.Builder
+	tryEmitLineMarker(&sb, commandStmt.Token, e.enableLineMarkers, e.inputFilepath)
+	if len(commandStmt.Args) > 0 {
+		sb.WriteString(fmt.Sprintf("\t%s %s\n", commandStmt.Name.Value, strings.Join(commandStmt.Args, ", ")))
+	} else {
+		sb.WriteString(fmt.Sprintf("\t%s\n", commandStmt.Name.Value))
+	}
 	return sb.String()
 }
 

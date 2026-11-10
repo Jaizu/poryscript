@@ -189,6 +189,10 @@ type MovementStatement struct {
 	Name             *Identifier
 	MovementCommands []token.Token
 	Scope            token.Type
+	// IsMacro is set for "movement macro NAME { ... }". It is emitted as an
+	// assembler .macro instead of labeled movement data, so other movements
+	// can reuse it by name.
+	IsMacro bool
 }
 
 func (ms *MovementStatement) AllChildren() []Statement {

@@ -5,7 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- Nothing, yet.
+### Added (fork)
+- `movement macro NAME { ... }` defines a reusable movement sequence, emitted as an assembler `.macro` at the start of the output.
+- Assembler macros can be called at the top level, outside of scripts, like `langtable(MyText)`.
+
+### Changed (fork)
+- A `const` value ends at a top-level macro call that starts on a new line.
 
 ## [3.6.1] - 2026-05-31
 ### Fixed

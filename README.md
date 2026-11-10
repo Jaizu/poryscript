@@ -1,5 +1,7 @@
 # Poryscript
 
+> **This is a fork** of [huderlem/poryscript](https://github.com/huderlem/poryscript) with extra features for custom assembler macros: [Movement Macros](#movement-macros) and [Top-Level Macros](#top-level-macros). Everything else works like upstream, and existing scripts compile to the same output.
+
 [![Actions Status](https://github.com/huderlem/poryscript/workflows/Go/badge.svg)](https://github.com/huderlem/poryscript/actions) [![codecov](https://codecov.io/gh/huderlem/poryscript/branch/master/graph/badge.svg)](https://codecov.io/gh/huderlem/poryscript)
 
 
@@ -35,9 +37,11 @@ View the [Changelog](https://github.com/huderlem/poryscript/blob/master/CHANGELO
     + [Automatic Text Formatting](#automatic-text-formatting)
     + [Custom Text Encoding](#custom-text-encoding)
   * [`movement` Statement](#movement-statement)
+    + [Movement Macros](#movement-macros)
   * [`mart` Statement](#mart-statement)
   * [`mapscripts` Statement](#mapscripts-statement)
   * [`raw` Statement](#raw-statement)
+  * [Top-Level Macros](#top-level-macros)
   * [Comments](#comments)
   * [Constants](#constants)
   * [Scope Modifiers](#scope-modifiers)
@@ -703,6 +707,46 @@ applymovement(2, moves(walk_left walk_up * 5 face_down))
 applymovement(2, moves(walk_left, walk_up * 5, face_down))
 ```
 
+### Movement Macros
+Use `movement macro` to define a reusable sequence of movement commands. It becomes an assembler `.macro`, so its name can be used as a movement command anywhere in the file: in other `movement` statements, inside `moves()`, and with `*`. Macros are always emitted at the start of the output, so they can be defined after the movements that use them.
+```
+movement PlayerWalkToGym {
+    walk_down
+    walk_to_gym
+}
+
+movement GuideWalkToGym {
+    walk_to_gym * 2
+    walk_in_place_faster_left
+}
+
+movement macro walk_to_gym {
+    walk_left * 3
+    walk_up
+}
+```
+Becomes:
+```
+.macro walk_to_gym
+	walk_left
+	walk_left
+	walk_left
+	walk_up
+.endm
+
+PlayerWalkToGym:
+	walk_down
+	walk_to_gym
+	step_end
+
+GuideWalkToGym:
+	walk_to_gym
+	walk_to_gym
+	walk_in_place_faster_left
+	step_end
+```
+A movement macro has no label and no `step_end`, and it can't take a scope modifier. A regular movement can still be named `macro` (`movement macro { ... }`).
+
 ## `mart` Statement
 Use `mart` statements to define a list of items for use with the `pokemart` command. Data defined with the `mart` statement is created with local scope by default. It is not neccesary to add `ITEM_NONE` to the end of the list, but if Poryscript encounters it, any items after it will be ignored.
 
@@ -825,6 +869,32 @@ MyScript_LongText:
     .string "the way.$"
 `
 ```
+
+## Top-Level Macros
+Any assembler macro can be called outside of a script, using the same syntax as a command: a name followed by its arguments in parentheses. It's emitted in place, as `name arg1, arg2`. This is useful for data macros defined in your project's assembly files, which would otherwise need a `raw` statement. Constants are replaced in the arguments.
+```
+text MyText_En { "Hello!" }
+text MyText_Es { "¡Hola!" }
+
+langtable(MyText)
+mydatamacro(LOCALID_GUIDE, 3)
+noargsmacro()
+```
+Becomes:
+```
+	langtable MyText
+
+	mydatamacro LOCALID_GUIDE, 3
+
+	noargsmacro
+
+MyText_En::
+	.string "Hello!$"
+
+MyText_Es::
+	.string "¡Hola!$"
+```
+The parentheses are required, even with no arguments. Top-level macros can't take inline text or `moves()`, since there is no script to name them after: define them with `text` or `movement` statements and pass their labels. A top-level macro call written on a new line ends the value of a preceding `const`.
 
 ## Comments
 Use single-line comments with `#` or `//`. Everything after the `#` or `//` will be ignored. Comments cannot be placed in a `raw` statement. (Users who wish to run the C preprocessor on Poryscript files should use `//` comments to avoid conflict with C preprocessor directives that use the `#` character.)

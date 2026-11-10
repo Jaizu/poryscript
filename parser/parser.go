@@ -388,11 +388,24 @@ func (p *Parser) ParseProgram() (*ast.Program, error) {
 		// TODO: checking for token.MOVEMENT is a hack--it's just used to differentiate explicit vs. implicit movement statements
 		// that exists as the program's top level statements.
 		if movementStmt, ok := stmt.(*ast.MovementStatement); ok {
+			if movementStmt.IsMacro {
+				continue
+			}
 			movementName := movementStmt.Name.Value
 			if existingStmt, ok := movementNames[movementName]; ok {
 				return nil, NewParseError(existingStmt.Token, fmt.Sprintf("duplicate movement label '%s'. Choose a unique label that won't clash with the auto-generated movement labels", movementName))
 			}
 			movementNames[movementName] = movementStmt
+		}
+	}
+
+	macroNames := make(map[string]struct{}, 0)
+	for _, stmt := range program.TopLevelStatements {
+		if movementStmt, ok := stmt.(*ast.MovementStatement); ok && movementStmt.IsMacro {
+			if _, ok := macroNames[movementStmt.Name.Value]; ok {
+				return nil, NewParseError(movementStmt.Name.Token, fmt.Sprintf("duplicate movement macro '%s'", movementStmt.Name.Value))
+			}
+			macroNames[movementStmt.Name.Value] = struct{}{}
 		}
 	}
 
@@ -443,6 +456,10 @@ func (p *Parser) parseTopLevelStatement() (ast.Statement, error) {
 	case token.CONST:
 		err := p.parseConstant()
 		return nil, err
+	case token.IDENT:
+		if p.peekTokenIs(token.LPAREN) {
+			return p.parseTopLevelMacroStatement()
+		}
 	}
 
 	return nil, NewParseError(p.curToken, fmt.Sprintf("could not parse top-level statement for '%s'", p.curToken.Literal))
@@ -795,6 +812,21 @@ func (p *Parser) tryParseLabelStatement() *ast.LabelStatement {
 	return nil
 }
 
+// parseTopLevelMacroStatement parses an assembler macro invocation outside of
+// any script, such as "langtable(MyText)". It's emitted in place as
+// "\tlangtable MyText", so any data macro defined in the project's assembly
+// can be used without a raw block.
+func (p *Parser) parseTopLevelMacroStatement() (*ast.CommandStatement, error) {
+	command, impData, err := p.parseCommandStatement(p.curToken.Literal)
+	if err != nil {
+		return nil, err
+	}
+	if len(impData.texts) > 0 || len(impData.movements) > 0 {
+		return nil, NewParseError(command.Token, fmt.Sprintf("top-level macro '%s' can't take inline text or movement. Define them with a text or movement statement and pass their labels instead", command.Name.Value))
+	}
+	return command, nil
+}
+
 func (p *Parser) parseRawStatement() (*ast.RawStatement, error) {
 	statement := &ast.RawStatement{
 		Token: p.curToken,
@@ -974,6 +1006,13 @@ func (p *Parser) parseMovementStatement() (*ast.MovementStatement, error) {
 		return nil, err
 	}
 	statement.Scope = scope
+	if p.peekTokenIs(token.IDENT) && p.peekToken.Literal == "macro" && p.peek2TokenIs(token.IDENT) {
+		if p.curToken.Type == token.RPAREN {
+			return nil, NewParseError(p.peekToken, "movement macros can't have a scope modifier")
+		}
+		statement.IsMacro = true
+		p.nextToken()
+	}
 	if err := p.expectPeek(token.IDENT); err != nil {
 		return nil, NewRangeParseError(statement.Token, p.peekToken, "missing name for movement statement")
 	}
@@ -2216,6 +2255,11 @@ func (p *Parser) parseConstant() error {
 	for {
 		_, ok := topLevelTokens[p.peekToken.Type]
 		if ok || p.curToken.Type == token.EOF {
+			break
+		}
+		// A macro call on a new line, like "langtable(MyText)", starts a
+		// top-level macro statement instead of continuing the value.
+		if sb.Len() > 0 && p.peekTokenIs(token.IDENT) && p.peek2TokenIs(token.LPAREN) && p.peekToken.LineNumber > p.curToken.LineNumber {
 			break
 		}
 		p.nextToken()
