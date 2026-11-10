@@ -122,7 +122,21 @@ func (l *Lexer) NextToken() token.Token {
 			tok = newSingleCharToken(token.NOT, l.ch, l.lineNumber, l.charNumber, l.utf8CharNumber)
 		}
 	case '<':
-		if l.peekChar() == '=' {
+		if l.peekChar() == '<' {
+			// Shift operators are passed through to the assembler as one token. Two LT
+			// tokens would be emitted as "< <", which isn't valid.
+			l.readChar()
+			tok = token.Token{
+				Type:               token.SHL,
+				Literal:            "<<",
+				LineNumber:         l.lineNumber,
+				EndLineNumber:      l.lineNumber,
+				StartCharIndex:     l.charNumber - 2,
+				StartUtf8CharIndex: l.utf8CharNumber - 2,
+				EndCharIndex:       l.charNumber,
+				EndUtf8CharIndex:   l.utf8CharNumber,
+			}
+		} else if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{
@@ -139,7 +153,21 @@ func (l *Lexer) NextToken() token.Token {
 			tok = newSingleCharToken(token.LT, l.ch, l.lineNumber, l.charNumber, l.utf8CharNumber)
 		}
 	case '>':
-		if l.peekChar() == '=' {
+		if l.peekChar() == '>' {
+			// Shift operators are passed through to the assembler as one token. Two GT
+			// tokens would be emitted as "> >", which isn't valid.
+			l.readChar()
+			tok = token.Token{
+				Type:               token.SHR,
+				Literal:            ">>",
+				LineNumber:         l.lineNumber,
+				EndLineNumber:      l.lineNumber,
+				StartCharIndex:     l.charNumber - 2,
+				StartUtf8CharIndex: l.utf8CharNumber - 2,
+				EndCharIndex:       l.charNumber,
+				EndUtf8CharIndex:   l.utf8CharNumber,
+			}
+		} else if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{

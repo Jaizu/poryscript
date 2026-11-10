@@ -322,3 +322,33 @@ world"`
 		t.Errorf("second token literal wrong. Expected=%q, Got=%q", expectedLiteral, tok.Literal)
 	}
 }
+
+func TestShiftOperators(t *testing.T) {
+	input := `1 << 2 >> 3 < 4 <= 5 > 6 >= 7`
+	tests := []struct {
+		expectedType    token.Type
+		expectedLiteral string
+	}{
+		{token.INT, "1"},
+		{token.SHL, "<<"},
+		{token.INT, "2"},
+		{token.SHR, ">>"},
+		{token.INT, "3"},
+		{token.LT, "<"},
+		{token.INT, "4"},
+		{token.LTE, "<="},
+		{token.INT, "5"},
+		{token.GT, ">"},
+		{token.INT, "6"},
+		{token.GTE, ">="},
+		{token.INT, "7"},
+		{token.EOF, ""},
+	}
+	l := New(input)
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Type != tt.expectedType || tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - expected %q (%q), got %q (%q)", i, tt.expectedType, tt.expectedLiteral, tok.Type, tok.Literal)
+		}
+	}
+}
