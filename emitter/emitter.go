@@ -133,6 +133,9 @@ func (e *Emitter) Emit() (string, error) {
 
 func (e *Emitter) emitMapScriptStatement(mapScriptStmt *ast.MapScriptsStatement, textLabels map[string]struct{}) (string, error) {
 	var sb strings.Builder
+	if mapScriptStmt.TableOnly {
+		return e.emitMapScriptTable(mapScriptStmt.TableMapScripts[0], mapScriptStmt.Scope, textLabels)
+	}
 	if mapScriptStmt.Scope == token.GLOBAL {
 		sb.WriteString(fmt.Sprintf("%s::\n", mapScriptStmt.Name.Value))
 	} else {
@@ -158,23 +161,39 @@ func (e *Emitter) emitMapScriptStatement(mapScriptStmt *ast.MapScriptsStatement,
 		}
 	}
 	for _, tableMapScript := range mapScriptStmt.TableMapScripts {
-		sb.WriteString(fmt.Sprintf("%s:\n", tableMapScript.Name))
-		for _, scriptEntry := range tableMapScript.Entries {
-			tryEmitLineMarker(&sb, scriptEntry.Condition, e.enableLineMarkers, e.inputFilepath)
-			sb.WriteString(fmt.Sprintf("\tmap_script_2 %s, %s, %s\n", scriptEntry.Condition.Literal, scriptEntry.Comparison, scriptEntry.Name))
+		tableOutput, err := e.emitMapScriptTable(tableMapScript, token.LOCAL, textLabels)
+		if err != nil {
+			return "", err
 		}
-		sb.WriteString("\t.2byte 0\n\n")
-		for _, scriptEntry := range tableMapScript.Entries {
-			if scriptEntry.Script != nil {
-				scriptOutput, err := e.emitScriptStatement(scriptEntry.Script, textLabels)
-				if err != nil {
-					return "", err
-				}
-				sb.WriteString(scriptOutput)
-			}
-		}
+		sb.WriteString(tableOutput)
 	}
 
+	return sb.String(), nil
+}
+
+// emitMapScriptTable emits a map script table (map_script_2 entries ended by 0) and its
+// inline scripts.
+func (e *Emitter) emitMapScriptTable(table ast.TableMapScript, scope token.Type, textLabels map[string]struct{}) (string, error) {
+	var sb strings.Builder
+	if scope == token.GLOBAL {
+		sb.WriteString(fmt.Sprintf("%s::\n", table.Name))
+	} else {
+		sb.WriteString(fmt.Sprintf("%s:\n", table.Name))
+	}
+	for _, scriptEntry := range table.Entries {
+		tryEmitLineMarker(&sb, scriptEntry.Condition, e.enableLineMarkers, e.inputFilepath)
+		sb.WriteString(fmt.Sprintf("\tmap_script_2 %s, %s, %s\n", scriptEntry.Condition.Literal, scriptEntry.Comparison, scriptEntry.Name))
+	}
+	sb.WriteString("\t.2byte 0\n\n")
+	for _, scriptEntry := range table.Entries {
+		if scriptEntry.Script != nil {
+			scriptOutput, err := e.emitScriptStatement(scriptEntry.Script, textLabels)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(scriptOutput)
+		}
+	}
 	return sb.String(), nil
 }
 

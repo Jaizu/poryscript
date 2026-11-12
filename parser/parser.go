@@ -1220,6 +1220,24 @@ func (p *Parser) parseMapscriptsStatement() (*ast.MapScriptsStatement, *impData,
 	}
 	impData := &impData{}
 
+	if p.peekTokenIs(token.LBRACKET) {
+		// A map script table on its own (mapscripts NAME [ ... ]), for tables that several
+		// maps share: their mapscripts refer to it with MAP_SCRIPT_ON_FRAME_TABLE: NAME.
+		p.nextToken()
+		p.nextToken()
+		tableEntries, entriesImpData, err := p.parseMapScriptTableEntries(statement.Name.Value)
+		if err != nil {
+			return nil, nil, err
+		}
+		impData.add(entriesImpData)
+		statement.TableOnly = true
+		statement.TableMapScripts = append(statement.TableMapScripts, ast.TableMapScript{
+			Type:    mapscriptsToken,
+			Name:    statement.Name.Value,
+			Entries: tableEntries,
+		})
+		return statement, impData, nil
+	}
 	if err := p.expectPeek(token.LBRACE); err != nil {
 		return nil, nil, NewRangeParseError(mapscriptsToken, p.peekToken, fmt.Sprintf("missing opening curly brace for mapscripts '%s'", statement.Name.Value))
 	}
@@ -1263,82 +1281,12 @@ func (p *Parser) parseMapscriptsStatement() (*ast.MapScriptsStatement, *impData,
 			})
 			p.nextToken()
 		} else if p.curToken.Type == token.LBRACKET {
-			tableEntries := []ast.TableMapScriptEntry{}
 			p.nextToken()
-			i := 0
-			for p.curToken.Type != token.RBRACKET {
-				var sb strings.Builder
-				startToken := p.curToken
-				for p.curToken.Type != token.COMMA {
-					if sb.Len() != 0 {
-						sb.WriteByte(' ')
-					}
-					sb.WriteString(p.tryReplaceWithConstant(p.curToken.Literal))
-					p.nextToken()
-					if p.curToken.Type == token.EOF {
-						return nil, nil, NewParseError(startToken, "missing ',' to specify map script table entry comparison value")
-					}
-				}
-				conditionValue := sb.String()
-				if len(conditionValue) == 0 {
-					return nil, nil, NewParseError(startToken, "expected condition for map script table entry, but it was empty")
-				}
-				p.nextToken()
-				endToken := p.curToken
-				sb.Reset()
-				for p.curToken.Type != token.COLON && p.curToken.Type != token.LBRACE {
-					if sb.Len() != 0 {
-						sb.WriteByte(' ')
-					}
-					sb.WriteString(p.tryReplaceWithConstant(p.curToken.Literal))
-					p.nextToken()
-					if p.curToken.Type == token.EOF {
-						return nil, nil, NewRangeParseError(startToken, endToken, "missing ':' or '{' to specify map script table entry")
-					}
-				}
-				comparisonValue := sb.String()
-				if len(comparisonValue) == 0 {
-					return nil, nil, NewRangeParseError(startToken, p.curToken, "expected comparison value for map script table entry, but it was empty")
-				}
-
-				conditionToken := startToken
-				conditionToken.Literal = conditionValue
-				if p.curToken.Type == token.COLON {
-					if err := p.expectPeek(token.IDENT); err != nil {
-						return nil, nil, NewParseError(p.peekToken, fmt.Sprintf("expected map script label after ':', but got '%s' instead", p.peekToken.Literal))
-					}
-					tableEntries = append(tableEntries, ast.TableMapScriptEntry{
-						Condition:  conditionToken,
-						Comparison: comparisonValue,
-						Name:       p.curToken.Literal,
-						Script:     nil,
-					})
-					p.nextToken()
-				} else if p.curToken.Type == token.LBRACE {
-					braceToken := p.curToken
-					p.nextToken()
-					scriptName := fmt.Sprintf("%s_%s_%d", statement.Name.Value, mapScriptTypeToken.Literal, i)
-					blockStmt, stmtImpData, err := p.parseBlockStatement(scriptName, braceToken)
-					if err != nil {
-						return nil, nil, err
-					}
-					impData.add(stmtImpData)
-					tableEntries = append(tableEntries, ast.TableMapScriptEntry{
-						Condition:  conditionToken,
-						Comparison: comparisonValue,
-						Name:       scriptName,
-						Script: &ast.ScriptStatement{
-							Name: &ast.Identifier{
-								Value: scriptName,
-							},
-							Body:  blockStmt,
-							Scope: token.LOCAL,
-						},
-					})
-					p.nextToken()
-				}
-				i++
+			tableEntries, entriesImpData, err := p.parseMapScriptTableEntries(fmt.Sprintf("%s_%s", statement.Name.Value, mapScriptTypeToken.Literal))
+			if err != nil {
+				return nil, nil, err
 			}
+			impData.add(entriesImpData)
 			statement.TableMapScripts = append(statement.TableMapScripts, ast.TableMapScript{
 				Type:    mapScriptTypeToken,
 				Name:    fmt.Sprintf("%s_%s", statement.Name.Value, mapScriptTypeToken.Literal),
@@ -1352,6 +1300,89 @@ func (p *Parser) parseMapscriptsStatement() (*ast.MapScriptsStatement, *impData,
 
 	return statement, impData, nil
 }
+
+// parseMapScriptTableEntries parses the entries of a map script table, from the token
+// after '[' up to the closing ']'. Inline scripts are named namePrefix_<index>.
+func (p *Parser) parseMapScriptTableEntries(namePrefix string) ([]ast.TableMapScriptEntry, *impData, error) {
+	impData := &impData{}
+	tableEntries := []ast.TableMapScriptEntry{}
+	i := 0
+	for p.curToken.Type != token.RBRACKET {
+		var sb strings.Builder
+		startToken := p.curToken
+		for p.curToken.Type != token.COMMA {
+			if sb.Len() != 0 {
+				sb.WriteByte(' ')
+			}
+			sb.WriteString(p.tryReplaceWithConstant(p.curToken.Literal))
+			p.nextToken()
+			if p.curToken.Type == token.EOF {
+				return nil, nil, NewParseError(startToken, "missing ',' to specify map script table entry comparison value")
+			}
+		}
+		conditionValue := sb.String()
+		if len(conditionValue) == 0 {
+			return nil, nil, NewParseError(startToken, "expected condition for map script table entry, but it was empty")
+		}
+		p.nextToken()
+		endToken := p.curToken
+		sb.Reset()
+		for p.curToken.Type != token.COLON && p.curToken.Type != token.LBRACE {
+			if sb.Len() != 0 {
+				sb.WriteByte(' ')
+			}
+			sb.WriteString(p.tryReplaceWithConstant(p.curToken.Literal))
+			p.nextToken()
+			if p.curToken.Type == token.EOF {
+				return nil, nil, NewRangeParseError(startToken, endToken, "missing ':' or '{' to specify map script table entry")
+			}
+		}
+		comparisonValue := sb.String()
+		if len(comparisonValue) == 0 {
+			return nil, nil, NewRangeParseError(startToken, p.curToken, "expected comparison value for map script table entry, but it was empty")
+		}
+
+		conditionToken := startToken
+		conditionToken.Literal = conditionValue
+		if p.curToken.Type == token.COLON {
+			if err := p.expectPeek(token.IDENT); err != nil {
+				return nil, nil, NewParseError(p.peekToken, fmt.Sprintf("expected map script label after ':', but got '%s' instead", p.peekToken.Literal))
+			}
+			tableEntries = append(tableEntries, ast.TableMapScriptEntry{
+				Condition:  conditionToken,
+				Comparison: comparisonValue,
+				Name:       p.curToken.Literal,
+				Script:     nil,
+			})
+			p.nextToken()
+		} else if p.curToken.Type == token.LBRACE {
+			braceToken := p.curToken
+			p.nextToken()
+			scriptName := fmt.Sprintf("%s_%d", namePrefix, i)
+			blockStmt, stmtImpData, err := p.parseBlockStatement(scriptName, braceToken)
+			if err != nil {
+				return nil, nil, err
+			}
+			impData.add(stmtImpData)
+			tableEntries = append(tableEntries, ast.TableMapScriptEntry{
+				Condition:  conditionToken,
+				Comparison: comparisonValue,
+				Name:       scriptName,
+				Script: &ast.ScriptStatement{
+					Name: &ast.Identifier{
+						Value: scriptName,
+					},
+					Body:  blockStmt,
+					Scope: token.LOCAL,
+				},
+			})
+			p.nextToken()
+		}
+		i++
+	}
+	return tableEntries, impData, nil
+}
+
 func (p *Parser) parseMovesOperator() ([]token.Token, error) {
 	if err := p.expectPeek(token.LPAREN); err != nil {
 		return nil, NewParseError(p.curToken, "moves operator must begin with an open parenthesis '('")

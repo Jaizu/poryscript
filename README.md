@@ -833,6 +833,39 @@ For maps with no map scripts, simply make an empty `mapscripts` statement:
 mapscripts MyNewCity_MapScripts {}
 ```
 
+A map script table can also be written on its own, with brackets instead of curly braces. This is useful when several maps share the same table: their `mapscripts` refer to it by name. The entries use the same syntax as the tables inside `mapscripts`, and the table is global by default (`mapscripts(local)` makes it local).
+```
+mapscripts CableClub_OnFrame [
+    VAR_CABLE_CLUB_STATE, USING_TRADE_CENTER: CableClub_EventScript_ExitTradeCenter
+    VAR_CABLE_CLUB_STATE, USING_UNION_ROOM {
+        lockall
+        setvar(VAR_CABLE_CLUB_STATE, 0)
+        releaseall
+    }
+]
+
+mapscripts PalletTown_PokemonCenter_MapScripts {
+    MAP_SCRIPT_ON_FRAME_TABLE: CableClub_OnFrame
+}
+```
+Becomes:
+```
+CableClub_OnFrame::
+	map_script_2 VAR_CABLE_CLUB_STATE, USING_TRADE_CENTER, CableClub_EventScript_ExitTradeCenter
+	map_script_2 VAR_CABLE_CLUB_STATE, USING_UNION_ROOM, CableClub_OnFrame_1
+	.2byte 0
+
+CableClub_OnFrame_1:
+	lockall
+	setvar VAR_CABLE_CLUB_STATE, 0
+	releaseall
+	return
+
+PalletTown_PokemonCenter_MapScripts::
+	map_script MAP_SCRIPT_ON_FRAME_TABLE, CableClub_OnFrame
+	.byte 0
+```
+
 ## `raw` Statement
 Use `raw` to include raw bytecode script. Anything in a `raw` statement will be directly included into the compiled script. This is useful for defining custom data, or data types not supported in regular Poryscript.
 ```
