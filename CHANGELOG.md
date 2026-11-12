@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added (fork)
 - `movement macro NAME { ... }` defines a reusable movement sequence, emitted as an assembler `.macro` at the start of the output.
 - Assembler macros can be called at the top level, outside of scripts, like `langtable(MyText)`.
+- `mapscripts NAME [ ... ]` defines a map script table on its own, so several maps can share it (`MAP_SCRIPT_ON_FRAME_TABLE: NAME`).
 
 ### Fixed (fork)
 - `<<` and `>>` were emitted as `< <` and `> >` (branch `fix-shift-operators`).

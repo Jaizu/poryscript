@@ -439,6 +439,9 @@ type MapScriptsStatement struct {
 	MapScripts      []MapScript
 	TableMapScripts []TableMapScript
 	Scope           token.Type
+	// TableOnly is a map script table on its own (mapscripts NAME [ ... ]): its only
+	// TableMapScripts entry is the table, named NAME, with no map script header.
+	TableOnly bool
 }
 
 func (ss *MapScriptsStatement) AllChildren() []Statement {
